@@ -1,0 +1,10 @@
+.idea/
+wxPython.py
+nogui.py
+test.py
+__pycache__/
+arial.ttf
+DejaVuSans.ttf
+DejaVuSansBold.ttf
+DejaVuSansMono-Oblique.ttf
+icon.jpg
