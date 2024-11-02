@@ -1,28 +1,5 @@
-# from pytubefix import YouTube
-#
-# import requests
-# from pytubefix import Playlist
-# import wx
-#
-# video_url = 'https://www.youtube.com/watch?v=TxtPRxcUUlY'
-# yt = YouTube(
-#     video_url,
-#     use_oauth=True,
-#     allow_oauth_cache=True
-# )
-#
-# # Попробуй выбрать другой поток, например, первый доступный
-# stream = yt.streams.filter(progressive=True, file_extension='mp4').first()
-#
-# # Скачивание видео
-# if stream:
-#     stream.download()
-#     print("Видео успешно скачано!")
-# else:
-#     print("Не удалось найти доступные потоки.")
-
-
 import asyncio
+import os.path
 import subprocess
 import time
 from pytubefix import YouTube
@@ -31,11 +8,13 @@ import wx
 from tqdm import tqdm
 from moviepy.editor import *
 import re
-import ffpb
+
+
+debug = False
 
 
 async def get_video_data(video_link):
-    # URL видео
+
     video_url: str = video_link
     yt = YouTube(
         video_url,
@@ -43,23 +22,53 @@ async def get_video_data(video_link):
         allow_oauth_cache=True
     )
 
-    # Выбор потока
-    # stream = yt.streams.filter(file_extension='mp4', progressive=True).order_by("resolution").desc().first()
+    biggest_size_progressive = 0
+    biggest_size_non_progressive = 0
+    progressive_is_better: bool = False
+    for stream in yt.streams.filter(file_extension='mp4', progressive=True):
+        if stream.filesize > biggest_size_progressive:
+            biggest_size_progressive = stream.filesize
+    for stream in yt.streams.filter(file_extension='mp4', progressive=False):
+        if stream.filesize > biggest_size_non_progressive:
+            biggest_size_non_progressive = stream.filesize
 
-    video_file = yt.streams.filter(file_extension='mp4', only_video=True).order_by("resolution").last()
-    audio_file = yt.streams.filter(only_audio=True).last()
+    if biggest_size_non_progressive > biggest_size_progressive:
+        print(f"\nВероятно это видео было стримом.Запускаю раздельное скачивание...")
+        print(f"{biggest_size_non_progressive // (1024 * 1024)} MB > {biggest_size_progressive // (1024 * 1024)} MB")
+        progressive_is_better = False
+        if debug:
+            for stream in yt.streams.filter(file_extension='mp4', progressive=False):
+                print(f"[Доступные потоки для скачивания в progressive=False]:")
+                print(f"{stream.resolution} - {stream.mime_type} - {stream.filesize // (1024 * 1024)} MB")
+    else:
+        print(f"\nУ данного видео есть лучшее качество в комбинированном виде. Дополнительная обработка не требуется.")
+        print(f"{biggest_size_non_progressive // (1024 * 1024)} MB <= {biggest_size_progressive // (1024 * 1024)} MB")
+        progressive_is_better = True
+        if debug:
+            for stream in yt.streams.filter(file_extension='mp4', progressive=True):
+                print(f"[Доступные потоки для скачивания в progressive=True]:")
+                print(f"{stream.resolution} - {stream.mime_type} - {stream.filesize // (1024 * 1024)} MB")
 
-    print(f'\n"Video:", {video_file}')
-    time.sleep(0.1)
-    await proceed_download(yt, video_file, "видео")
-    time.sleep(0.1)
-    print(f'\n"Audio:" {audio_file}')
-    time.sleep(0.1)
-    await proceed_download(yt, audio_file, "аудио")
+    if progressive_is_better:
+        video_file = yt.streams.filter(file_extension='mp4', progressive=True).order_by("resolution").last()
+        # print(f'\n"Video:", {video_file}')
+        time.sleep(0.05)
+        await proceed_download(yt, video_file, "video")
 
-    # print(f'\n{yt.title}')
+        return yt.title, yt.video_id, progressive_is_better
+    else:
+        video_file = yt.streams.filter(file_extension='mp4', only_video=True).order_by("resolution").last()
+        audio_file = yt.streams.filter(only_audio=True).last()
 
-    return yt.title, yt.video_id
+        # print(f'\n"Video:", {video_file}')
+        # time.sleep(0.05)
+        await proceed_download(yt, video_file, "video")
+        # time.sleep(0.05)
+        # print(f'\n"Audio:" {audio_file}')
+        # time.sleep(0.05)
+        await proceed_download(yt, audio_file, "audio")
+
+        return yt.title, yt.video_id, progressive_is_better
 
 
 async def proceed_download(yt, download_object, file_type: str):
@@ -80,18 +89,20 @@ async def proceed_download(yt, download_object, file_type: str):
     if download_object:
         #{'temp_video.mp4' if file_type=='видео' else 'temp_audio.webm'}
         with tqdm(total=download_object.filesize, unit='B', unit_scale=True, desc=f"Загрузка {file_type}") as progress_bar:
-            download_object.download(filename=f"{yt.video_id}{'.mp4' if file_type=='видео' else '.webm'}")
-        print(f"\n{file_type[0].upper()+file_type[1::]} успешно скачано!")
+            download_object.download(filename=f"{yt.video_id}{'.mp4' if file_type=='video' else '.webm'}")
+        time.sleep(0.05)
+        print(f"{file_type[0].upper()+file_type[1::]} успешно скачано!")
     else:
-        print(f"\nНе удалось найти доступные потоки для {file_type}.")
+        time.sleep(0.05)
+        print(f"Не удалось найти доступные потоки для {file_type}.")
 
 
 async def combine_video_audio(v_title, v_id):
 
     video_file = f'{v_id}.mp4'
     audio_file = f'{v_id}.webm'
-    final_filename = re.sub(r'[<>:"/\\|?*]', ' ', v_title)
-    final_filename = f'{final_filename}.mp4'
+    final_filename = f"{re.sub(r'[<>:"/\\|?*]', ' ', v_title)}.mp4"
+    if debug: print(f"Итоговое название файла: {final_filename}")
 
     command = [
         'ffmpeg',
@@ -100,6 +111,7 @@ async def combine_video_audio(v_title, v_id):
         # '-hwaccel_output_format', 'vulkan',
         # '-c:v', 'h264_nvenc',
         '-hwaccel', 'cuda',
+        '-y',
         '-i', video_file,  # Входной видео файл
         '-i', audio_file,   # Входной аудио файл
         '-c:v', 'copy',     # Копирование видеопотока
@@ -107,12 +119,9 @@ async def combine_video_audio(v_title, v_id):
         '-strict', 'experimental',  # Разрешение на использование экспериментальных кодеков,
         final_filename         # Выходной файл
     ]
-    command2 = [
-        f'-hwaccel cuda -i {video_file} -i {audio_file} -c:v copy, -c:a aac, -strict experimental {final_filename}'
-    ]
-    # Выполняем команду и дожидаемся её завершения
-    # ffpb.main(argv=command, stream=final_filename)
-    # await asyncio.to_thread(ffpb.main, argv=command, stream=sys.stdout)
+
+    await kill_ffmpeg() # на случай, если есть зависшие процессы ffmpeg
+    print(f"Идёт кодирование для ({final_filename})...")
     try:
         result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print("Кодирование завершено успешно.")
@@ -120,113 +129,48 @@ async def combine_video_audio(v_title, v_id):
     except subprocess.CalledProcessError as e:
         print("Ошибка при кодировании:")
         print(e.stderr.decode())  # Выводим стандартный вывод ошибок
-    os.remove(video_file)
-    os.remove(audio_file)
-    # os.rename("temp_result.mp4", final_filename )
+
+    if os.path.exists(video_file): os.remove(video_file)
+    if os.path.exists(audio_file): os.remove(audio_file)
+    # await just_rename("temp_result.mp4", final_filename)
+    print(f"Видео успешно собрано из аудио и видео потоков.")
+
+
+async def just_rename(from_filename, to_filename):
+    if os.path.exists(to_filename): os.remove(to_filename)
+    os.rename(from_filename, to_filename)
+
+
+async def kill_ffmpeg():
+    try:
+        # Завершает все процессы ffmpeg
+        result = subprocess.call(['taskkill', '/F', '/IM', 'ffmpeg.exe'])
+        if result == 0:
+            print("Все процессы ffmpeg были успешно завершены.")
+        else:
+            print(f"Не удалось завершить процессы ffmpeg. Код ошибки: {result}")
+    except Exception as e:
+        print(f"Ошибка при завершении процессов: {e}")
 
 
 async def main():
+    print(f'\n')
     videos: list = [
-        'https://www.youtube.com/watch?v=2EkZjppztyo',
-        'https://www.youtube.com/watch?v=jWorjBDcty4'
+        #'https://www.youtube.com/watch?v=2EkZjppztyo',
+        #'https://www.youtube.com/watch?v=jWorjBDcty4',
+        'https://www.youtube.com/watch?v=J1sFBDQt8J0',
+        'https://www.youtube.com/watch?v=EsHxKJEwDS4'
     ]
 
     for video in videos:
-        v_title, v_id = await get_video_data(video)
-        await combine_video_audio(v_title, v_id)
+        v_title, v_id, should_combine = await get_video_data(video)
+        if debug: print(f"should_combine: {should_combine}")
+        if should_combine:
+            await just_rename(f"{v_id}.mp4", f"{re.sub(r'[<>:"/\\|?*]', ' ', v_title)}.mp4")
+        else:
+            await combine_video_audio(v_title, v_id)
+
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# from pytubefix import YouTube
-# from tqdm import tqdm
-# import os
-# from moviepy.editor import VideoFileClip, AudioFileClip
-#
-#
-# def download_video_and_audio(video_link):
-#     # URL видео
-#     video_url: str = video_link
-#     yt = YouTube(
-#         video_url,
-#         use_oauth=True,
-#         allow_oauth_cache=True
-#     )
-#
-#     print(f'\n{yt.title}')
-#
-#     # Вывод доступных потоков для проверки
-#     print("\nДоступные потоки:")
-#     for stream in yt.streams.filter(file_extension='mp4'):
-#         print(f"{stream.resolution} - {stream.mime_type} - {stream.filesize // (1024 * 1024)} MB")
-#
-#     # Выбор потока с максимальным качеством (видео только)
-#     video_stream = yt.streams.filter(file_extension='mp4', only_video=True).order_by('resolution').desc().first()
-#     audio_stream = yt.streams.filter(only_audio=True).first()
-#
-#     if video_stream and audio_stream:
-#         print(f"Скачивание видео в разрешении {video_stream.resolution} и аудио...")
-#
-#         # Скачивание видео
-#         video_filename = f"{yt.title}_video.mp4"
-#         audio_filename = f"{yt.title}_audio.mp4"
-#
-#         video_stream.download(filename=video_filename)
-#         audio_stream.download(filename=audio_filename)
-#
-#         print("Скачивание завершено!")
-#
-#         # Объединение видео и аудио
-#         combine_video_audio(video_filename, audio_filename)
-#
-#     else:
-#         print("Не удалось найти доступные потоки.")
-#
-#
-# def combine_video_audio(video_file, audio_file):
-#     # Объединение видео и аудио с помощью moviepy
-#     final_filename = video_file.replace('_video.mp4', '_final.mp4')
-#
-#     video_clip = VideoFileClip(video_file)
-#     audio_clip = AudioFileClip(audio_file)
-#
-#     final_clip = video_clip.set_audio(audio_clip)
-#     final_clip.write_videofile(final_filename, codec='libx264', audio_codec='aac')
-#
-#     # Очистка временных файлов
-#     video_clip.close()
-#     audio_clip.close()
-#     final_clip.close()
-#
-#     # Удаление временных файлов
-#     os.remove(video_file)
-#     os.remove(audio_file)
-#
-#
-# videos: list = [
-#     "https://www.youtube.com/watch?v=jWorjBDcty4",
-#     'https://www.youtube.com/watch?v=2EkZjppztyo'
-# ]
-#
-# for video in videos:
-#     download_video_and_audio(video)
-
-
-
-
