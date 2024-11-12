@@ -14,17 +14,22 @@ debug = False
 
 
 async def get_video_data(video_link):
-
+    if debug: print(f'get into get_video_data_func')
     video_url: str = video_link
     yt = YouTube(
         video_url,
-        use_oauth=True,
+        use_oauth=False,
+        use_po_token=False,
         allow_oauth_cache=True
     )
 
+    if debug: print(f'get YT object by url: yt = Youtube()')
     biggest_size_progressive = 0
     biggest_size_non_progressive = 0
     progressive_is_better: bool = False
+    # if debug:
+    #     for stream in yt.streams:
+    #         print(f'{stream.resolution} - {stream.mime_type}')
     for stream in yt.streams.filter(file_extension='mp4', progressive=True):
         if stream.filesize > biggest_size_progressive:
             biggest_size_progressive = stream.filesize
@@ -158,8 +163,7 @@ async def main():
     videos: list = [
         #'https://www.youtube.com/watch?v=2EkZjppztyo',
         #'https://www.youtube.com/watch?v=jWorjBDcty4',
-        'https://www.youtube.com/watch?v=J1sFBDQt8J0',
-        'https://www.youtube.com/watch?v=EsHxKJEwDS4'
+        'https://www.youtube.com/watch?v=-A83ChDxP2A'
     ]
 
     for video in videos:
