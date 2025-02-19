@@ -211,13 +211,14 @@ ydl_opts = {
     'merge_output_format': 'mp4',                                               # Формат выходного файла
     'quiet': False,                                                             # Отключить лишний вывод
     'no_warnings': True,                                                        # Отключить предупреждения
-    'noplaylist': True,                                                         # Отключает скачивание плейлиста, даже если он представлен в ссылке
+    'noplaylist': False,                                                         # Отключает скачивание плейлиста, даже если он представлен в ссылке
     'extract_flat': True,                                                       # Отключает работу с видео, только вытаскивание данных
 }
 
 
 def check_playlist(video_url):
     with YoutubeDL(ydl_opts) as ydl:
+        ydl_opts['extract_flat'] = True  # отключение загрузки перед каждым чеком плейлистов
         if video_url.find("list=") > 0 and (video_url.find('youtube.com') or video_url.find('youtu.be')) > 0:
             print(f'Обнаружен плейлист, вытаскиваем его заголовок')
             pl_url = 'https://www.youtube.com/playlist?' + video_url[video_url.find('list='):video_url.find('list=') + 39]
@@ -228,9 +229,10 @@ def check_playlist(video_url):
             # избавляемся от спец-символов, с которыми папки нельзя создать
             sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', pl_info.get("title"))
             ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/",1)
-            ydl_opts['extract_flat'] = False # возврат работы с видео
             # print(f'Измененная строка: {ydl_opts["outtmpl"]}')
-            print(ydl_opts)
+            # print(ydl_opts)
+        ydl_opts['extract_flat'] = False  # возврат работы с видео
+
 
 
 def download_video(video_url):
