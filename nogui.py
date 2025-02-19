@@ -218,7 +218,7 @@ ydl_opts = {
 
 def check_playlist(video_url):
     with YoutubeDL(ydl_opts) as ydl:
-        if video_url.find("list=") and (video_url.find('youtube.com') or video_url.find('youtu.be')):
+        if video_url.find("list=") > 0 and (video_url.find('youtube.com') or video_url.find('youtu.be')) > 0:
             print(f'Обнаружен плейлист, вытаскиваем его заголовок')
             pl_url = 'https://www.youtube.com/playlist?' + video_url[video_url.find('list='):video_url.find('list=') + 39]
             print(f'Непосредственный адрес плейлиста: {pl_url}')
