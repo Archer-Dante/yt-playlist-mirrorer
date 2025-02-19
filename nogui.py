@@ -206,13 +206,13 @@ import re
 
 # Настройки для yt-dlp
 ydl_opts = {
-    'format': 'bestvideo+bestaudio/best',                   # Выбираем лучшее качество видео + аудио
-    'outtmpl': 'downloads/%(title)s [%(id)s].%(ext)s',      # Шаблон имени файла
-    'merge_output_format': 'mp4',                           # Формат выходного файла
-    'quiet': False,                                         # Отключить лишний вывод
-    'no_warnings': True,                                    # Отключить предупреждения
-    'noplaylist': True,                                     # Отключает скачивание плейлиста, даже если он представлен в ссылке
-    'extract_flat': True,                                   # Отключает работу с видео, только вытаскивание данных
+    'format': 'bestvideo+bestaudio/best',                                       # Выбираем лучшее качество видео + аудио
+    'outtmpl': 'downloads/%(title)s [%(id)s][%(uploader_id)s].%(ext)s',         # Шаблон имени файла
+    'merge_output_format': 'mp4',                                               # Формат выходного файла
+    'quiet': False,                                                             # Отключить лишний вывод
+    'no_warnings': True,                                                        # Отключить предупреждения
+    'noplaylist': True,                                                         # Отключает скачивание плейлиста, даже если он представлен в ссылке
+    'extract_flat': True,                                                       # Отключает работу с видео, только вытаскивание данных
 }
 
 
@@ -238,7 +238,9 @@ def download_video(video_url):
         info = ydl.extract_info(video_url, download=False)  # получаем информацию о видео
         video_id = info.get('id')
         video_title = info.get('title')
+        video_uploader = info.get('uploader_id')
         print(f"Скачивание: {video_title} [{video_id}]")
+        print(f'{video_uploader}')
 
         def progress_hook(d):
             if d['status'] == 'downloading':
@@ -272,15 +274,11 @@ def download_video(video_url):
         max_tries = 5
         process_download(current_try)
 
-        print(f"\nЗагрузка завершена: {video_title} [{video_id}].{ydl_opts['merge_output_format']}")
+        print(f"\nЗагрузка завершена: {video_title} [{video_id}][{video_uploader}].{ydl_opts['merge_output_format']}")
 
 
 if __name__ == "__main__":
-    # url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    # url = "https://www.youtube.com/watch?app=desktop&v=KO0wNQdiivs&list=PLuuJ7EJSjEfMETY8txzRpXHPH08Eg7kA6&sttick=0"
-    # url = "https://www.youtube.com/watch?v=lopgTEXgDYY&list=PLc52h9BK94Hn8cMAIvZOOvHKZVkP3cN1T"
-    # url = "https://www.youtube.com/watch?v=ygTZZpVkmKg"
-
+    # парс ссылок из файла
     with open('download.txt', 'r', encoding='utf-8') as file:
         download_data = file.readlines()
 
