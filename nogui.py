@@ -212,37 +212,28 @@ ydl_opts = {
     'quiet': False,                                                             # Отключить лишний вывод
     'no_warnings': True,                                                        # Отключить предупреждения
     'noplaylist': False,                                                         # Отключает скачивание плейлиста, даже если он представлен в ссылке
-    'extract_flat': True,                                                       # Отключает работу с видео, только вытаскивание данных
+    'extract_flat': False,                                                       # Отключает работу с видео, только вытаскивание данных
 }
-
-
-def check_playlist(video_url):
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl_opts['extract_flat'] = True  # отключение загрузки перед каждым чеком плейлистов
-        if video_url.find("list=") > 0 and (video_url.find('youtube.com') or video_url.find('youtu.be')) > 0:
-            print(f'Обнаружен плейлист, вытаскиваем его заголовок')
-            pl_url = 'https://www.youtube.com/playlist?' + video_url[video_url.find('list='):video_url.find('list=') + 39]
-            print(f'Непосредственный адрес плейлиста: {pl_url}')
-            pl_info = ydl.extract_info(pl_url, download=False)  # Получение названия плейлиста
-            print(f'Название плейлиста: {pl_info.get("title")}')
-            print(ydl_opts)
-            # избавляемся от спец-символов, с которыми папки нельзя создать
-            sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', pl_info.get("title"))
-            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/",1)
-            # print(f'Измененная строка: {ydl_opts["outtmpl"]}')
-            # print(ydl_opts)
-        ydl_opts['extract_flat'] = False  # возврат работы с видео
-
 
 
 def download_video(video_url):
     with YoutubeDL(ydl_opts) as ydl:
+
         info = ydl.extract_info(video_url, download=False)  # получаем информацию о видео
+        with open('debug.txt', 'w', encoding='utf-8') as file:
+            file.write(str(info))
+
         video_id = info.get('id')
-        video_title = info.get('title')
+        video_title: str = ""
+        playlist_title: str = ""
         video_uploader = info.get('uploader_id')
+        if video_url.find("list=") > 0 and (video_url.find('youtube.com') or video_url.find('youtu.be')) > 0:
+            playlist_title = info.get('title')
+            video_title = info.get('entries')[0].get('title')
+            sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
+            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
+
         print(f"Скачивание: {video_title} [{video_id}]")
-        print(f'{video_uploader}')
 
         def progress_hook(d):
             if d['status'] == 'downloading':
@@ -285,7 +276,7 @@ if __name__ == "__main__":
         download_data = file.readlines()
 
     for url in download_data:
-        check_playlist(url)
+        # check_playlist(url)
         download_video(url)
 
 
