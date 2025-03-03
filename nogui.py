@@ -203,25 +203,66 @@
 
 from yt_dlp import YoutubeDL
 import re
+import sqlite3
 
 # Настройки для yt-dlp
 ydl_opts = {
     'format': 'bestvideo+bestaudio/best',                                       # Выбираем лучшее качество видео + аудио
     'outtmpl': 'downloads/%(title)s [%(id)s][%(uploader_id)s].%(ext)s',         # Шаблон имени файла
     'merge_output_format': 'mp4',                                               # Формат выходного файла
-    'quiet': False,                                                             # Отключить лишний вывод
+    'quiet': True,                                                             # Отключить лишний вывод
     'no_warnings': True,                                                        # Отключить предупреждения
-    'noplaylist': False,                                                         # Отключает скачивание плейлиста, даже если он представлен в ссылке
-    'extract_flat': False,                                                       # Отключает работу с видео, только вытаскивание данных
+    'noplaylist': False,                                                        # Отключает скачивание плейлиста, даже если он представлен в ссылке
+    'extract_flat': True,                                                       # Отключает работу с видео, только вытаскивание данных
+    'just_sync': True,                                                          # КАСТОМ - Проводить синхронизацию без скачивания
 }
 
+
+def sync_playlist(info):
+
+
+
+    v_id = info.get("id")
+    v_title = info.get("title")
+    thumbnails = info.get("thumbnails")
+    video_thumb = {
+        "max_res": '',
+        "link": '',
+        "format": ''
+    }
+
+    for preview in thumbnails:
+        res = preview.get("resolution")
+        if res is None: continue
+        print(res)
+        # перемножение Ширины и Высоты
+        pixels = eval(res.replace('x', '*')) if len(res) < 10 else None
+        # отсекает невалидные значения пикселей и непрямой формат ссылок или иные форматы
+        if pixels is not None and preview.get('url').endswith(".jpg"):
+            last_pixels = video_thumb['max_res']
+            if last_pixels == "" or int(last_pixels) < int(pixels):
+                video_thumb['max_res'] = pixels
+                video_thumb['link'] = preview.get('url')
+                video_thumb['format'] = 'jpg'
+                print(f'Новое максимальное разрешение: {video_thumb["max_res"]} - [{preview.get("resolution")}]')
+                print(video_thumb)
+
+
+
+
+
+    pass
 
 def download_video(video_url):
     with YoutubeDL(ydl_opts) as ydl:
 
         info = ydl.extract_info(video_url, download=False)  # получаем информацию о видео
-        with open('debug.txt', 'w', encoding='utf-8') as file:
-            file.write(str(info))
+        with open('debug.txt', 'a', encoding='utf-8') as file:
+           file.write(str(info) + "\n")
+
+        if ydl_opts['just_sync']:
+            print("\nСИНХРОНИЗАЦИЯ ВКЛЮЧЕНА")
+            sync_playlist(info)
 
         video_id = info.get('id')
         video_title: str = ""
@@ -232,6 +273,7 @@ def download_video(video_url):
             video_title = info.get('entries')[0].get('title')
             sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
             ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
+
 
         print(f"Скачивание: {video_title} [{video_id}]")
 
@@ -271,9 +313,12 @@ def download_video(video_url):
 
 
 if __name__ == "__main__":
+    # сброс дебаг инфы
+    with open('debug.txt', 'w', encoding='utf-8') as file1:
+       pass
     # парс ссылок из файла
-    with open('download.txt', 'r', encoding='utf-8') as file:
-        download_data = file.readlines()
+    with open('download.txt', 'r', encoding='utf-8') as file2:
+        download_data = file2.readlines()
 
     for url in download_data:
         # check_playlist(url)
