@@ -222,18 +222,17 @@ def sql_magic(**kwargs):
     connection = sqlite3.connect("data.db")
     cursor = connection.cursor()
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS playlists (
+    CREATE TABLE playlists (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pl_id TEXT UNIQUE NOT NULL,
         pl_title TEXT NOT NULL
     )
-    """)
+    """) # IF NOT EXISTS
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS videos (
+    CREATE TABLE videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         pl_id TEXT,
         v_id TEXT UNIQUE NOT NULL,
-        v_link TEXT UNIQUE NOT NULL,
         v_title TEXT NOT NULL,
         v_duration INTEGER,
         v_author TEXT,
@@ -241,7 +240,7 @@ def sql_magic(**kwargs):
         v_thumb BLOB,
         FOREIGN KEY (pl_id) REFERENCES playlists (pl_id) ON DELETE CASCADE
     )
-    """)
+    """) # IF NOT EXISTS
 
     pl_id = kwargs.get('pl_id')
     pl_title = kwargs.get('pl_title')
@@ -263,7 +262,6 @@ def sql_magic(**kwargs):
         print(f"#{kwargs.get('entry')} Новый плейлист {pl_id} успешно добавлен в Базу Данных!")
 
     v_id = kwargs.get('v_id')
-    v_link = "https//www.youtube.com/watch?v=" + kwargs.get('v_id')
     v_title = kwargs.get('v_title')
     v_duration = kwargs.get('v_duration')
     v_author = kwargs.get('v_author')
@@ -283,8 +281,8 @@ def sql_magic(**kwargs):
     if cursor.fetchone():
         print(f"#{kwargs.get('entry')} Такое видео {v_id} уже есть в Базе данных.")
     else:
-        cursor.execute("INSERT INTO videos (pl_id, v_id, v_link, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?,?)",
-                   (pl_id, v_id, v_link, v_title, v_duration, v_author, v_desc, v_thumb))
+        cursor.execute("INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
+                   (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
         print(f"#{kwargs.get('entry')} Видео {v_id} успешно добавлено в Базу Данных!")
 
     connection.commit()
@@ -359,7 +357,7 @@ def download_video(video_url):
                     "v_id": entry.get('id'),
                     "v_title": entry.get('title'),
                     "v_desc": entry.get('title'),
-                    "v_author": entry.get('uploader_id'),
+                    "v_author": entry.get('uploader_id') if entry.get('uploader_id') else entry.get('channel_id'),
                     "v_duration": entry.get('duration'),
                     "image": get_thumb_data(entry),
                     "entry": i
