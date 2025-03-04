@@ -199,8 +199,7 @@
 #
 #
 # asyncio.run(main())
-
-
+import requests
 from yt_dlp import YoutubeDL
 import re
 import sqlite3
@@ -210,48 +209,125 @@ ydl_opts = {
     'format': 'bestvideo+bestaudio/best',                                       # Выбираем лучшее качество видео + аудио
     'outtmpl': 'downloads/%(title)s [%(id)s][%(uploader_id)s].%(ext)s',         # Шаблон имени файла
     'merge_output_format': 'mp4',                                               # Формат выходного файла
-    'quiet': True,                                                             # Отключить лишний вывод
+    'quiet': False,                                                             # Отключить лишний вывод
     'no_warnings': True,                                                        # Отключить предупреждения
     'noplaylist': False,                                                        # Отключает скачивание плейлиста, даже если он представлен в ссылке
-    'extract_flat': True,                                                       # Отключает работу с видео, только вытаскивание данных
+    'extract_flat': True,                                      # Сокращает количество данных до минимума, равноценно process=False
     'just_sync': True,                                                          # КАСТОМ - Проводить синхронизацию без скачивания
+    'download_playlist': True,
 }
 
 
-def sync_playlist(info):
+def sql_magic(**kwargs):
+    connection = sqlite3.connect("data.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS playlists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pl_id TEXT UNIQUE NOT NULL,
+        pl_title TEXT NOT NULL
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS videos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pl_id TEXT,
+        v_id TEXT UNIQUE NOT NULL,
+        v_link TEXT UNIQUE NOT NULL,
+        v_title TEXT NOT NULL,
+        v_duration INTEGER,
+        v_author TEXT,
+        v_desc TEXT,
+        v_thumb BLOB,
+        FOREIGN KEY (pl_id) REFERENCES playlists (pl_id) ON DELETE CASCADE
+    )
+    """)
+
+    pl_id = kwargs.get('pl_id')
+    pl_title = kwargs.get('pl_title')
+
+    # cursor.execute("SELECT pl_id FROM playlists")
+    # rows = cursor.fetchall()
+    # if any(row[0] == pl_id for row in rows):
+    #     print(f"Такой плейлист {pl_id} уже есть в Базе данных.")
+    # else:
+    #     cursor.execute("INSERT INTO playlists (pl_id, pl_title) VALUES (?, ?)", (pl_id, pl_title))
+    #     print(f"Плейлист {pl_id} успешно добавлен в Базу Данных!")
+    # print(f'ID плейлиста: {pl_id}, тип {type(pl_id)}')
+    cursor.execute("SELECT 1 FROM playlists WHERE pl_id = ?", [pl_id])
+    if cursor.fetchone():
+        # print(f"#{kwargs.get('entry')} Такой плейлист {pl_id} уже есть в Базе данных.")
+        pass
+    else:
+        cursor.execute("INSERT INTO playlists (pl_id, pl_title) VALUES (?, ?)", (pl_id, pl_title))
+        print(f"#{kwargs.get('entry')} Новый плейлист {pl_id} успешно добавлен в Базу Данных!")
+
+    v_id = kwargs.get('v_id')
+    v_link = "https//www.youtube.com/watch?v=" + kwargs.get('v_id')
+    v_title = kwargs.get('v_title')
+    v_duration = kwargs.get('v_duration')
+    v_author = kwargs.get('v_author')
+    v_desc = kwargs.get('v_desc')
+    v_thumb = kwargs.get('image')
+
+    # cursor.execute("SELECT v_id FROM videos")
+    # rows = cursor.fetchall()
+    # # print(rows)
+    # if any(row[0] == v_id for row in rows):
+    #     print(f"Такое видео {v_id} уже есть в Базе данных.")
+    # else:
+    #     cursor.execute("INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
+    #                (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
+    #     print(f"Видео {v_id} успешно добавлено в Базу Данных!")
+    cursor.execute("SELECT 1 FROM videos WHERE v_id = ?", [v_id])
+    if cursor.fetchone():
+        print(f"#{kwargs.get('entry')} Такое видео {v_id} уже есть в Базе данных.")
+    else:
+        cursor.execute("INSERT INTO videos (pl_id, v_id, v_link, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?,?)",
+                   (pl_id, v_id, v_link, v_title, v_duration, v_author, v_desc, v_thumb))
+        print(f"#{kwargs.get('entry')} Видео {v_id} успешно добавлено в Базу Данных!")
+
+    connection.commit()
+    connection.close()
 
 
+def get_thumb_data(info):
 
-    v_id = info.get("id")
-    v_title = info.get("title")
-    thumbnails = info.get("thumbnails")
     video_thumb = {
         "max_res": '',
-        "link": '',
-        "format": ''
+        # "format": '',
+        "link": ''
     }
-
+    thumbnails = info.get("thumbnails")
     for preview in thumbnails:
-        res = preview.get("resolution")
-        if res is None: continue
-        print(res)
-        # перемножение Ширины и Высоты
-        pixels = eval(res.replace('x', '*')) if len(res) < 10 else None
-        # отсекает невалидные значения пикселей и непрямой формат ссылок или иные форматы
-        if pixels is not None and preview.get('url').endswith(".jpg"):
-            last_pixels = video_thumb['max_res']
-            if last_pixels == "" or int(last_pixels) < int(pixels):
-                video_thumb['max_res'] = pixels
-                video_thumb['link'] = preview.get('url')
-                video_thumb['format'] = 'jpg'
-                print(f'Новое максимальное разрешение: {video_thumb["max_res"]} - [{preview.get("resolution")}]')
-                print(video_thumb)
+        # res = preview.get("resolution")
+        # if res is None: continue
+        # print(res)
+        # # перемножение Ширины и Высоты
+        # pixels = eval(res.replace('x', '*')) if len(res) < 10 else None
+        # # отсекает невалидные значения пикселей и непрямой формат ссылок или иные форматы
+        # if pixels is not None and preview.get('url').endswith(".jpg"):
+        #     last_pixels = video_thumb['max_res']
+        #     if last_pixels == "" or int(last_pixels) < int(pixels):
+        #         video_thumb['max_res'] = pixels
+        #         video_thumb['link'] = preview.get('url')
+        #         video_thumb['format'] = 'jpg'
+        #         print(f'Новое максимальное разрешение: {video_thumb["max_res"]} - [{preview.get("resolution")}]')
+        #         print(video_thumb)
+
+        pixels = preview.get("width") * preview.get("height")
+
+        last_pixels = video_thumb['max_res']
+        if last_pixels == "" or int(last_pixels) < int(pixels):
+            video_thumb['max_res'] = pixels
+            video_thumb['link'] = preview.get('url') # [0:preview.get('url').find("?")]
+            # print(f'Новое максимальное разрешение: {video_thumb["max_res"]} - [{preview.get("width")}x{preview.get("height")}]')
+
+    # print(video_thumb)
+    img_binary = requests.get(video_thumb['link']).content
+    return img_binary
 
 
-
-
-
-    pass
 
 def download_video(video_url):
     with YoutubeDL(ydl_opts) as ydl:
@@ -260,22 +336,56 @@ def download_video(video_url):
         with open('debug.txt', 'a', encoding='utf-8') as file:
            file.write(str(info) + "\n")
 
-        if ydl_opts['just_sync']:
-            print("\nСИНХРОНИЗАЦИЯ ВКЛЮЧЕНА")
-            sync_playlist(info)
-
         video_id = info.get('id')
         video_title: str = ""
         playlist_title: str = ""
         video_uploader = info.get('uploader_id')
-        if video_url.find("list=") > 0 and (video_url.find('youtube.com') or video_url.find('youtu.be')) > 0:
-            playlist_title = info.get('title')
-            video_title = info.get('entries')[0].get('title')
+
+        # когда из видео, которое находится в плейлисте
+        # блок отвечающий за заполнение данных о плейлисте для видео, у которых есть референс на плейлист (является частью плейлиста)
+        # с обычными видео такого не будет в принципе
+        if video_url.find('&list=') > 0 and ydl_opts['download_playlist'] == True:
+            playlist_id = video_url[video_url.find("list=") + 5::]
+            playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
+            playlist_info = ydl.extract_info(playlist_url, download=False, process=False)
+            playlist_title = playlist_info.get('title')
+            # подмена url, так как ydl плохо работает с ссылками &list и не применяет параметра
+            video_url = playlist_url
+            for i, entry in enumerate(playlist_info.get("entries")):
+                # print("ТУТ!", entry)
+                sql_magic(**{
+                    "pl_id": playlist_id,
+                    "pl_title": playlist_title,
+                    "v_id": entry.get('id'),
+                    "v_title": entry.get('title'),
+                    "v_desc": entry.get('title'),
+                    "v_author": entry.get('uploader_id'),
+                    "v_duration": entry.get('duration'),
+                    "image": get_thumb_data(entry),
+                    "entry": i
+                })
+
             sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
-            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
+            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/","/" + sanitized_title + "/%(playlist_autonumber)s. ",1)
+            if ydl_opts['just_sync']:
+                # get_thumb_data(info)
+                # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
+                pass
 
 
-        print(f"Скачивание: {video_title} [{video_id}]")
+        # # когда со страницы плейлиста
+        # if video_url.find('?list') > 0:
+        #     playlist_title = info.get('title')
+        #     video_title = info.get('entries')[0].get('title')
+        #
+        #     sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
+        #     ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
+        #     if ydl_opts['just_sync']:
+        #         print("\nСИНХРОНИЗАЦИЯ ВКЛЮЧЕНА")
+        #         # get_thumb_data(info)
+        #         # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
+        #
+        # # print(f"Скачивание: {video_title} [{video_id}]")
 
         def progress_hook(d):
             if d['status'] == 'downloading':
@@ -292,7 +402,7 @@ def download_video(video_url):
         def process_download(current_try):
             try:
                 print("Запуск скачивания...")
-                ydl.download([video_url])  # Скачиваем видео
+                ydl.download([video_url])
             except Exception as e:
                 if str(e).find("HTTPSConnectionPool") or str(e).find("Read timed out"):
                     print(f'\nОшибка!')
@@ -307,7 +417,7 @@ def download_video(video_url):
 
         current_try = 1
         max_tries = 5
-        process_download(current_try)
+        # process_download(current_try)
 
         print(f"\nЗагрузка завершена: {video_title} [{video_id}][{video_uploader}].{ydl_opts['merge_output_format']}")
 
