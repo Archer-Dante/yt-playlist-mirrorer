@@ -205,13 +205,19 @@ import re
 import sqlite3
 
 
-def erase_db_on_run():
-    import os
-    os.remove("data.db") if os.path.exists("data.db") else None
+# def erase_db_on_run():
+#     import os
+#     os.remove("data.db") if os.path.exists("data.db") else None
+#
+#
+# erase_db_on_run()
 
 
-erase_db_on_run()
-
+cls_red = "\033[31m"
+cls_green = "\033[32m"
+cls_blue = "\033[34m"
+cls_pink = "\033[35m"
+cls_reset = "\033[0m"
 
 # Настройки для yt-dlp
 ydl_opts = {
@@ -228,47 +234,8 @@ ydl_opts = {
 
 
 def sql_magic(**kwargs):
-    connection = sqlite3.connect("data.db")
-    cursor = connection.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS playlists (
-        pl_id TEXT UNIQUE PRIMARY KEY NOT NULL,
-        pl_title TEXT NOT NULL
-    )
-    """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS videos (
-        pl_id TEXT NOT NULL,
-        v_id TEXT UNIQUE NOT NULL,
-        v_title TEXT NOT NULL,
-        v_duration INTEGER,
-        v_author TEXT,
-        v_desc TEXT,
-        v_thumb BLOB,
-        PRIMARY KEY (pl_id, v_id),
-        FOREIGN KEY (pl_id) REFERENCES playlists (pl_id) ON DELETE CASCADE
-    )
-    """)
-
     pl_id = kwargs.get('pl_id')
     pl_title = kwargs.get('pl_title')
-
-    # cursor.execute("SELECT pl_id FROM playlists")
-    # rows = cursor.fetchall()
-    # if any(row[0] == pl_id for row in rows):
-    #     print(f"Такой плейлист {pl_id} уже есть в Базе данных.")
-    # else:
-    #     cursor.execute("INSERT INTO playlists (pl_id, pl_title) VALUES (?, ?)", (pl_id, pl_title))
-    #     print(f"Плейлист {pl_id} успешно добавлен в Базу Данных!")
-    # print(f'ID плейлиста: {pl_id}, тип {type(pl_id)}')
-    cursor.execute("SELECT 1 FROM playlists WHERE pl_id = ?", [pl_id])
-    if cursor.fetchone():
-        # print(f"#{kwargs.get('entry')} Такой плейлист {pl_id} уже есть в Базе данных.")
-        pass
-    else:
-        cursor.execute("INSERT INTO playlists (pl_id, pl_title) VALUES (?, ?)", (pl_id, pl_title))
-        print(f"#{kwargs.get('entry')} Новый плейлист {pl_id} успешно добавлен в Базу Данных!")
-
     v_id = kwargs.get('v_id')
     v_title = kwargs.get('v_title')
     v_duration = kwargs.get('v_duration')
@@ -276,23 +243,31 @@ def sql_magic(**kwargs):
     v_desc = kwargs.get('v_desc')
     v_thumb = kwargs.get('image')
 
-    # cursor.execute("SELECT v_id FROM videos")
-    # rows = cursor.fetchall()
-    # # print(rows)
-    # if any(row[0] == v_id for row in rows):
-    #     print(f"Такое видео {v_id} уже есть в Базе данных.")
-    # else:
-    #     cursor.execute("INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
-    #                (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
-    #     print(f"Видео {v_id} успешно добавлено в Базу Данных!")
-    cursor.execute("SELECT 1 FROM videos WHERE v_id = ?", [v_id])
+    connection = sqlite3.connect("data.db")
+    cursor = connection.cursor()
+    cursor.execute(f"""
+    CREATE TABLE IF NOT EXISTS `playlist_{pl_id}` (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pl_id TEXT,
+        pl_title TEXT,
+        v_id TEXT UNIQUE NOT NULL,
+        v_title TEXT NOT NULL,
+        v_duration INTEGER,
+        v_author TEXT,
+        v_desc TEXT,
+        v_thumb BLOB
+    )
+    """)
+
+    cursor.execute(f"SELECT 1 FROM `playlist_{pl_id}` WHERE v_id = ?", [v_id])
     if cursor.fetchone():
-        print(f"#{kwargs.get('entry')} Такое видео {v_id} уже есть в Базе данных.")
+        print(f"{cls_blue}#{kwargs.get('entry')}{cls_reset} Такое видео {cls_red}[{v_id}]{cls_reset} уже есть в плейлисте {cls_blue}[{pl_title}]{cls_reset}")
+        pass
     else:
         cursor.execute(
-            "INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
-            (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
-        print(f"#{kwargs.get('entry')} Видео {v_id} успешно добавлено в Базу Данных!")
+            f"INSERT INTO `playlist_{pl_id}` (pl_id, pl_title, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?,?)",
+            (pl_id, pl_title, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
+        print(f"{cls_blue}#{kwargs.get('entry')}{cls_reset} Видео {cls_green}[{v_id} | {v_title}]{cls_reset} успешно добавлен в Базу Данных для плейлиста {cls_blue}[{pl_title}]{cls_reset}!")
 
     connection.commit()
     connection.close()
@@ -359,12 +334,12 @@ def download_video(video_url):
             for i, entry in enumerate(playlist_info.get("entries")):
                 # print("ТУТ!", entry)
                 sql_magic(**{
-                    "pl_id": playlist_id,
-                    "pl_title": playlist_title,
-                    "v_id": entry.get('id'),
-                    "v_title": entry.get('title'),
-                    "v_desc": entry.get('title'),
-                    "v_author": entry.get('uploader_id') if entry.get('uploader_id') else entry.get('channel_id'),
+                    "pl_id": playlist_id.replace("\n",""),
+                    "pl_title": playlist_title.replace("\n",""),
+                    "v_id": entry.get('id').replace("\n",""),
+                    "v_title": entry.get('title').replace("\n",""),
+                    "v_desc": entry.get('title').replace("\n",""),
+                    "v_author": entry.get('uploader_id').replace("\n","") if entry.get('uploader_id') else entry.get('channel_id').replace("\n",""),
                     "v_duration": entry.get('duration'),
                     "image": get_thumb_data(entry),
                     "entry": i
