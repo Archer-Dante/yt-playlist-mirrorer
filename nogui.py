@@ -204,16 +204,25 @@ from yt_dlp import YoutubeDL
 import re
 import sqlite3
 
+
+def erase_db_on_run():
+    import os
+    os.remove("data.db") if os.path.exists("data.db") else None
+
+
+erase_db_on_run()
+
+
 # Настройки для yt-dlp
 ydl_opts = {
-    'format': 'bestvideo+bestaudio/best',                                       # Выбираем лучшее качество видео + аудио
-    'outtmpl': 'downloads/%(title)s [%(id)s][%(uploader_id)s].%(ext)s',         # Шаблон имени файла
-    'merge_output_format': 'mp4',                                               # Формат выходного файла
-    'quiet': False,                                                             # Отключить лишний вывод
-    'no_warnings': True,                                                        # Отключить предупреждения
-    'noplaylist': False,                                                        # Отключает скачивание плейлиста, даже если он представлен в ссылке
-    'extract_flat': True,                                      # Сокращает количество данных до минимума, равноценно process=False
-    'just_sync': True,                                                          # КАСТОМ - Проводить синхронизацию без скачивания
+    'format': 'bestvideo+bestaudio/best',  # Выбираем лучшее качество видео + аудио
+    'outtmpl': 'downloads/%(title)s [%(id)s][%(uploader_id)s].%(ext)s',  # Шаблон имени файла
+    'merge_output_format': 'mp4',  # Формат выходного файла
+    'quiet': False,  # Отключить лишний вывод
+    'no_warnings': True,  # Отключить предупреждения
+    'noplaylist': False,  # Отключает скачивание плейлиста, даже если он представлен в ссылке
+    'extract_flat': True,  # Сокращает количество данных до минимума, равноценно process=False
+    'just_sync': True,  # КАСТОМ - Проводить синхронизацию без скачивания
     'download_playlist': True,
 }
 
@@ -222,25 +231,24 @@ def sql_magic(**kwargs):
     connection = sqlite3.connect("data.db")
     cursor = connection.cursor()
     cursor.execute("""
-    CREATE TABLE playlists (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pl_id TEXT UNIQUE NOT NULL,
+    CREATE TABLE IF NOT EXISTS playlists (
+        pl_id TEXT UNIQUE PRIMARY KEY NOT NULL,
         pl_title TEXT NOT NULL
     )
-    """) # IF NOT EXISTS
+    """)
     cursor.execute("""
-    CREATE TABLE videos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pl_id TEXT,
+    CREATE TABLE IF NOT EXISTS videos (
+        pl_id TEXT NOT NULL,
         v_id TEXT UNIQUE NOT NULL,
         v_title TEXT NOT NULL,
         v_duration INTEGER,
         v_author TEXT,
         v_desc TEXT,
         v_thumb BLOB,
+        PRIMARY KEY (pl_id, v_id),
         FOREIGN KEY (pl_id) REFERENCES playlists (pl_id) ON DELETE CASCADE
     )
-    """) # IF NOT EXISTS
+    """)
 
     pl_id = kwargs.get('pl_id')
     pl_title = kwargs.get('pl_title')
@@ -281,8 +289,9 @@ def sql_magic(**kwargs):
     if cursor.fetchone():
         print(f"#{kwargs.get('entry')} Такое видео {v_id} уже есть в Базе данных.")
     else:
-        cursor.execute("INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
-                   (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
+        cursor.execute(
+            "INSERT INTO videos (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb) VALUES (?,?,?,?,?,?,?)",
+            (pl_id, v_id, v_title, v_duration, v_author, v_desc, v_thumb))
         print(f"#{kwargs.get('entry')} Видео {v_id} успешно добавлено в Базу Данных!")
 
     connection.commit()
@@ -290,7 +299,6 @@ def sql_magic(**kwargs):
 
 
 def get_thumb_data(info):
-
     video_thumb = {
         "max_res": '',
         # "format": '',
@@ -318,7 +326,7 @@ def get_thumb_data(info):
         last_pixels = video_thumb['max_res']
         if last_pixels == "" or int(last_pixels) < int(pixels):
             video_thumb['max_res'] = pixels
-            video_thumb['link'] = preview.get('url') # [0:preview.get('url').find("?")]
+            video_thumb['link'] = preview.get('url')  # [0:preview.get('url').find("?")]
             # print(f'Новое максимальное разрешение: {video_thumb["max_res"]} - [{preview.get("width")}x{preview.get("height")}]')
 
     # print(video_thumb)
@@ -326,13 +334,12 @@ def get_thumb_data(info):
     return img_binary
 
 
-
 def download_video(video_url):
     with YoutubeDL(ydl_opts) as ydl:
 
         info = ydl.extract_info(video_url, download=False)  # получаем информацию о видео
         with open('debug.txt', 'a', encoding='utf-8') as file:
-           file.write(str(info) + "\n")
+            file.write(str(info) + "\n")
 
         video_id = info.get('id')
         video_title: str = ""
@@ -345,7 +352,7 @@ def download_video(video_url):
         if video_url.find('&list=') > 0 and ydl_opts['download_playlist'] == True:
             playlist_id = video_url[video_url.find("list=") + 5::]
             playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
-            playlist_info = ydl.extract_info(playlist_url, download=False, process=False)
+            playlist_info = ydl.extract_info(playlist_url.replace("\n",""), download=False, process=False)
             playlist_title = playlist_info.get('title')
             # подмена url, так как ydl плохо работает с ссылками &list и не применяет параметра
             video_url = playlist_url
@@ -364,12 +371,11 @@ def download_video(video_url):
                 })
 
             sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
-            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/","/" + sanitized_title + "/%(playlist_autonumber)s. ",1)
+            ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
             if ydl_opts['just_sync']:
                 # get_thumb_data(info)
                 # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
                 pass
-
 
         # # когда со страницы плейлиста
         # if video_url.find('?list') > 0:
@@ -423,7 +429,7 @@ def download_video(video_url):
 if __name__ == "__main__":
     # сброс дебаг инфы
     with open('debug.txt', 'w', encoding='utf-8') as file1:
-       pass
+        pass
     # парс ссылок из файла
     with open('download.txt', 'r', encoding='utf-8') as file2:
         download_data = file2.readlines()
@@ -431,23 +437,3 @@ if __name__ == "__main__":
     for url in download_data:
         # check_playlist(url)
         download_video(url)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
