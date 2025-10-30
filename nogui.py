@@ -205,6 +205,8 @@ import re
 import sqlite3
 
 
+
+
 # def erase_db_on_run():
 #     import os
 #     os.remove("data.db") if os.path.exists("data.db") else None
@@ -325,14 +327,19 @@ def download_video(video_url):
         # блок отвечающий за заполнение данных о плейлисте для видео, у которых есть референс на плейлист (является частью плейлиста)
         # с обычными видео такого не будет в принципе
         if video_url.find('&list=') > 0 and ydl_opts['download_playlist'] == True:
+            print("Установлено скачивание плейлиста.")
+            print("Плейлист обнаружен в ссылке.")
             playlist_id = video_url[video_url.find("list=") + 5::]
             playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
-            playlist_info = ydl.extract_info(playlist_url.replace("\n",""), download=False, process=False)
+            playlist_info = ydl.extract_info(playlist_url.replace("\n",""), download=True, process=True)
             playlist_title = playlist_info.get('title')
             # подмена url, так как ydl плохо работает с ссылками &list и не применяет параметра
             video_url = playlist_url
             for i, entry in enumerate(playlist_info.get("entries")):
                 # print("ТУТ!", entry)
+                if entry.get('uploader_id') is None and entry.get('channel_id') is None:
+                    print(f"{cls_blue}#{i}{cls_reset} Видео {cls_red}[{entry.get('id')}]{cls_reset} больше недоступно или удалено {cls_blue}[{playlist_title}]{cls_reset}")
+                    continue
                 sql_magic(**{
                     "pl_id": playlist_id.replace("\n",""),
                     "pl_title": playlist_title.replace("\n",""),
@@ -396,14 +403,14 @@ def download_video(video_url):
 
         current_try = 1
         max_tries = 5
-        # process_download(current_try)
+        process_download(current_try)
 
         print(f"\nЗагрузка завершена: {video_title} [{video_id}][{video_uploader}].{ydl_opts['merge_output_format']}")
 
 
 if __name__ == "__main__":
     # сброс дебаг инфы
-    with open('debug.txt', 'w', encoding='utf-8') as file1:
+    with open('log.txt', 'w', encoding='utf-8') as file1:
         pass
     # парс ссылок из файла
     with open('download.txt', 'r', encoding='utf-8') as file2:
