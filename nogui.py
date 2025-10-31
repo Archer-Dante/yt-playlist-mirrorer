@@ -230,10 +230,13 @@ ydl_opts = {
     'no_warnings': True,  # Отключить предупреждения
     'noplaylist': False,  # Отключает скачивание плейлиста, даже если он представлен в ссылке
     'extract_flat': True,  # Сокращает количество данных до минимума, равноценно process=False
-    'just_sync': True,  # КАСТОМ - Проводить синхронизацию без скачивания
-    'download_playlist': True,
+    'ignoreerrors': True,
+    # 'cookiesfrombrowser': 'firefox',
+    # 'just_sync': False,  # КАСТОМ - Проводить синхронизацию без скачивания
+    'download_playlist': True
 }
 
+ydl_opts_defaults = ydl_opts
 
 def sql_magic(**kwargs):
     pl_id = kwargs.get('pl_id')
@@ -311,9 +314,59 @@ def get_thumb_data(info):
     return img_binary
 
 
-def download_video(video_url):
-    with YoutubeDL(ydl_opts) as ydl:
+# # когда со страницы плейлиста
+# if video_url.find('?list') > 0:
+#     playlist_title = info.get('title')
+#     video_title = info.get('entries')[0].get('title')
+#
+#     sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
+#     ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
+#     if ydl_opts['just_sync']:
+#         print("\nСИНХРОНИЗАЦИЯ ВКЛЮЧЕНА")
+#         # get_thumb_data(info)
+#         # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
+#
+# # print(f"Скачивание: {video_title} [{video_id}]")
 
+
+# def progress_hook(d):
+#     if d['status'] == 'downloading':
+#         filename = d['filename']
+#         downloaded_bytes = d.get('_downloaded_bytes_str', 'N/A')
+#         total_bytes = d.get('_total_bytes_str', 'N/A')
+#         percent = d.get('_percent_str', 'N/A')
+#         speed = d.get('_speed_str', 'N/A')
+#         eta = d.get('_eta_str', 'N/A')
+#         print(f"\r{filename}: {percent} [{downloaded_bytes}/{total_bytes}] @ {speed} ETA: {eta}", end="")
+#
+# ydl_opts['progress_hooks'] = [progress_hook]
+
+def process_download(ydl, video_url):
+    max_tries = 5
+    tries_left = max_tries
+
+    for i in range(1, max_tries):
+        try:
+            print("Запуск скачивания...")
+            ydl.download([video_url])
+        except Exception as e:
+            if str(e).find("HTTPSConnectionPool") or str(e).find("Read timed out"):
+                print(f'\nОшибка!')
+                print(e)
+                tries_left -= 1
+                if max_tries > 0:
+                    print(f'\nПопытка загрузки {max_tries - tries_left} из {max_tries}')
+                    continue
+                else:
+                    print(f'Ошибка: Достигнуто максимальное количество попыток скачивания.')
+            else:
+                print(f'Непредвиденная ошибка: {e}')
+
+def download_video(video_url):
+    # reset to defaults
+    ydl_opts = ydl_opts_defaults
+
+    with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(video_url, download=False)  # получаем информацию о видео
         with open('debug.txt', 'a', encoding='utf-8') as file:
             file.write(str(info) + "\n")
@@ -354,56 +407,11 @@ def download_video(video_url):
 
             sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
             ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
-            if ydl_opts['just_sync']:
-                # get_thumb_data(info)
-                # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
-                pass
+            print("Новый путь:", ydl_opts['outtmpl'])
 
-        # # когда со страницы плейлиста
-        # if video_url.find('?list') > 0:
-        #     playlist_title = info.get('title')
-        #     video_title = info.get('entries')[0].get('title')
-        #
-        #     sanitized_title = re.sub(r'[<>:"/\\|?*]', ' ', playlist_title)
-        #     ydl_opts['outtmpl']['default'] = ydl_opts['outtmpl']['default'].replace("/", "/" + sanitized_title + "/%(playlist_autonumber)s. ", 1)
-        #     if ydl_opts['just_sync']:
-        #         print("\nСИНХРОНИЗАЦИЯ ВКЛЮЧЕНА")
-        #         # get_thumb_data(info)
-        #         # sql_magic(**{"pl_id": "value1", "pl_title": playlist_title, "param3": "value3"})
-        #
-        # # print(f"Скачивание: {video_title} [{video_id}]")
 
-        def progress_hook(d):
-            if d['status'] == 'downloading':
-                filename = d['filename']
-                downloaded_bytes = d.get('_downloaded_bytes_str', 'N/A')
-                total_bytes = d.get('_total_bytes_str', 'N/A')
-                percent = d.get('_percent_str', 'N/A')
-                speed = d.get('_speed_str', 'N/A')
-                eta = d.get('_eta_str', 'N/A')
-                print(f"\r{filename}: {percent} [{downloaded_bytes}/{total_bytes}] @ {speed} ETA: {eta}", end="")
-
-        ydl_opts['progress_hooks'] = [progress_hook]
-
-        def process_download(current_try):
-            try:
-                print("Запуск скачивания...")
-                ydl.download([video_url])
-            except Exception as e:
-                if str(e).find("HTTPSConnectionPool") or str(e).find("Read timed out"):
-                    print(f'\nОшибка!')
-                    current_try += 1
-                    if current_try <= max_tries:
-                        print(f'\nПопытка загрузки {current_try} из {max_tries}')
-                        process_download(current_try)
-                    else:
-                        print(f'Ошибка: Достигнуто максимальное количество попыток скачивания.')
-                else:
-                    print(f'Непредвиденная ошибка: {e}')
-
-        current_try = 1
-        max_tries = 5
-        process_download(current_try)
+        ydl_opts['extract_flat'] = False
+        process_download(ydl, video_url)
 
         print(f"\nЗагрузка завершена: {video_title} [{video_id}][{video_uploader}].{ydl_opts['merge_output_format']}")
 
